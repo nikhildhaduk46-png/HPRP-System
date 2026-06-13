@@ -1,0 +1,100 @@
+"""
+Streamlit Web App
+Run:  streamlit run app\app.py
+"""
+import streamlit as st
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from src.predict import predict_patient
+
+st.set_page_config(page_title="Patient Risk Prediction", page_icon="🏥", layout="wide")
+st.title("🏥 Hospital Patient Risk Prediction System")
+st.markdown("Fill in the patient details and click **Predict** to get the risk level.")
+st.divider()
+
+
+patient_name = st.text_input("Patient Name", placeholder="e.g. John Doe")
+city = st.text_input("City", placeholder="e.g. Surat")
+
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.subheader("👤 Demographics")
+    age    = st.number_input("Age",          18, 100, 55)
+    gender = st.selectbox("Gender", ["Male", "Female"])
+    gender = 0 if gender == "Male" else 1
+    bmi    = st.number_input("BMI",          15.0, 55.0, 27.5, step=0.1)
+
+    st.subheader("🫀 Vitals")
+    systolic  = st.number_input("Systolic BP",    80,  200, 130)
+    diastolic = st.number_input("Diastolic BP",   50,  120, 85)
+    hr        = st.number_input("Heart Rate",     40,  150, 80)
+    temp      = st.number_input("Temperature °C", 35.0, 42.0, 37.0, step=0.1)
+
+with col2:
+    st.subheader("🩸 Blood Values")
+    glucose = st.number_input("Blood Glucose (mg/dL)", 50,  400, 110)
+    spo2    = st.number_input("SpO2 (%)",              80.0,100.0, 97.0, step=0.1)
+    wbc     = st.number_input("WBC (×10³)",            1.0, 30.0, 8.5,  step=0.1)
+    rbc     = st.number_input("RBC (×10⁶)",            2.0, 7.0,  4.5,  step=0.01)
+    hgb     = st.number_input("Hemoglobin (g/dL)",     5.0, 20.0, 13.5, step=0.1)
+    hct     = st.number_input("Hematocrit (%)",        15.0, 60.0, 40.0, step=0.1)
+    plt_    = st.number_input("Platelets (×10³)",      50,  500,  220)
+
+with col3:
+    st.subheader("🔬 Lab Results")
+    sodium     = st.number_input("Sodium (mEq/L)",     125, 155, 138)
+    potassium  = st.number_input("Potassium (mEq/L)",  2.5, 6.5, 4.0, step=0.1)
+    creatinine = st.number_input("Creatinine (mg/dL)", 0.4, 10.0, 1.0, step=0.1)
+    bun        = st.number_input("BUN (mg/dL)",        5,   80,  18)
+    alt        = st.number_input("ALT (U/L)",          5,  200,  30)
+    ast        = st.number_input("AST (U/L)",          5,  200,  30)
+
+    st.subheader("📋 Clinical Info")
+    los       = st.number_input("Length of Stay (days)", 1, 60, 5)
+    prev_adm  = st.number_input("Previous Admissions",   0, 20,  1)
+    diag_code = st.number_input("Diagnosis Code (0-14)", 0, 14,  0)
+    model_choice = st.selectbox("Select Model", [
+        "RandomForest", "GradientBoosting",
+        "DecisionTree", "LogisticRegression"])
+
+st.divider()
+
+if st.button("🔍 Predict Patient Risk", use_container_width=True):
+    # Derived features — must match preprocessing.py
+    pulse_pressure = systolic - diastolic
+    bmi_cat   = 0 if bmi < 18.5 else (1 if bmi < 25 else (2 if bmi < 30 else 3))
+    age_group = 0 if age < 30  else (1 if age < 50 else (2 if age < 65 else 3))
+    glc_risk  = 1 if glucose > 126      else 0
+    kid_risk  = 1 if creatinine > 1.5   else 0
+    low_oxy   = 1 if spo2 < 94          else 0
+    high_bun  = 1 if bun > 25           else 0
+
+    patient = {
+        'Age': age, 'Gender': gender, 'BMI': bmi,
+        'Heart_Rate_bpm': hr, 'Temperature_C': temp,
+        'Blood_Glucose_mgdL': glucose, 'SpO2_%': spo2,
+        'WBC_x10e3': wbc, 'RBC_x10e6': rbc,
+        'Hemoglobin_gdL': hgb, 'Hematocrit_%': hct,
+        'Platelets_x10e3': plt_, 'Sodium_mEqL': sodium,
+        'Potassium_mEqL': potassium, 'Creatinine_mgdL': creatinine, 
+        'BUN_mgdL': bun, 'ALT_UL': alt, 'AST_UL': ast,
+        'Length_of_Stay_days': los, 'Previous_Admissions': prev_adm,
+        'Diagnosis_Code': diag_code,
+        'Systolic_BP': systolic, 'Diastolic_BP': diastolic,
+        'Pulse_Pressure': pulse_pressure, 'BMI_Category': bmi_cat,
+        'Age_Group': age_group, 'Glucose_Risk': glc_risk,
+        'Kidney_Risk': kid_risk, 'LowOxygen': low_oxy, 'HighBUN': high_bun
+    }
+
+    try:
+        result = predict_patient(patient, model_name=model_choice)
+        if result['prediction'] == 1:
+            st.error(f"### 🔴 HIGH RISK\nProbability: **{result['probability']:.2%}**")
+            st.warning("⚠️ Immediate medical attention recommended.")
+        else:
+            st.success(f"### 🟢 LOW RISK\nProbability of High Risk: **{result['probability']:.2%}**")
+            st.info("✅ Patient appears stable. Continue routine monitoring.")
+    except FileNotFoundError:
+        st.error("❌ Models not found. Please run  `python main.py`  first.")
